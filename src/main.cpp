@@ -26,6 +26,22 @@ const int esc_pin = D0;
 int esc_minUs = 800;
 int esc_maxUs = 2000;
 
+/* Servo for Horizontal Wing */
+Servo servo;
+const int servo_pin = D2;
+int servo_minUs = 1000;
+int servo_maxUs = 2000;
+int servo_neutral = 1500;
+
+/* Servo for Vertical Wing */
+Servo servo2;
+const int servo2_pin = D1;
+int servo2_minUs = 1200;
+int servo2_maxUs = 1800;
+int servo2_neutral = 1500;
+
+const unsigned long WATCHDOG_TIMEOUT = 1000;
+
 class Schedule
 {
 public:
@@ -78,7 +94,29 @@ private:
   double lastTime_;
 };
 
+class Watchdog
+{
+public:
+  Watchdog(unsigned long timeout_ms) : timeout_ms_(timeout_ms)
+  {
+    lastTime_ = millis();
+  }
+  void reset()
+  {
+    lastTime_ = millis();
+  }
+  bool isTimeout()
+  {
+    unsigned long currentTime = millis() - lastTime_;
+    return currentTime > timeout_ms_;
+  }
+private:
+  unsigned long timeout_ms_;
+  unsigned long lastTime_;
+};
+
 Schedule schedule;
+Watchdog watchdog(WATCHDOG_TIMEOUT);
 
 void handleGetSchedule() 
 {
@@ -101,13 +139,62 @@ void handleGetSchedule()
   schedule.start();
 }
 
+void handleGetJoystick() 
+{
+  // 受信するデータ
+  double x = 0;
+  double y = 0;
+
+  // 受信
+  //Serial.println("handleGetJoystick");
+  String json = server.arg("joystick");
+  // パース
+  DynamicJsonDocument doc(1024);
+  deserializeJson(doc, json);
+  // 送信側
+  x = doc["x"];
+  y = doc["y"];
+
+  x = constrain(-x*100, -100.0, 100.0);
+  y = constrain(-y*100, -100.0, 100.0);
+
+  /* Control horizontal servo */
+  int servo_min_duty = map(servo_minUs, 0, 20000, 0, 1023);
+  int servo_max_duty = map(servo_maxUs, 0, 20000, 0, 1023);
+  int duty1 = map(y, -100, 100, servo_min_duty, servo_max_duty);
+  ledcWrite(2, duty1);
+
+  int servo2_min_duty = map(servo2_minUs, 0, 20000, 0, 1023);
+  int servo2_max_duty = map(servo2_maxUs, 0, 20000, 0, 1023);
+  int duty2 = map(x, -100, 100, servo2_min_duty, servo2_max_duty);
+  ledcWrite(3, duty2);
+}
+
+// クライアントから一定時間ごとに送信されるリクエストを受け取る
+// watchdogをリセットする
+void handleWatchdog() 
+{
+  // timestamp_msを取得
+  double timestamp_ms = server.arg("timestamp_ms").toDouble();  // maybe unused
+
+  // watchdogをリセット
+  watchdog.reset();
+}
+
 /*Timer*/
 void onTimer() {
   double output = schedule.getOutput();
   int esc_min_duty = map(esc_minUs, 0, 20000, 0, 1023);
   int esc_max_duty = map(esc_maxUs, 0, 20000, 0, 1023);
   ledcWrite(1, map(constrain(output, 0, 100), 0, 100, esc_min_duty, esc_max_duty));
-  Serial.printf("output: %f\n", output);
+  //Serial.printf("output: %f\n", output);
+
+  // watchdogがタイムアウトしたらESCを最小にする
+  if (watchdog.isTimeout()) {
+    ledcWrite(1, esc_min_duty);
+    ledcWrite(2, map(servo_neutral, 0, 20000, 0, 1023));
+    ledcWrite(3, map(servo2_neutral, 0, 20000, 0, 1023));
+  }
 }
 
 
@@ -122,6 +209,20 @@ void setup() {
   int esc_min_duty = map(esc_minUs, 0, 20000, 0, 1023);
   ledcWrite(1, esc_min_duty);
 
+  /* Calibration Horizontal Servo */
+  pinMode(servo_pin, OUTPUT);
+  ledcSetup(2, 50, 10);
+  ledcAttachPin(servo_pin, 2);
+  int servo_min_duty = map(servo_minUs, 0, 20000, 0, 1023);
+  ledcWrite(2, servo_min_duty);
+
+  /* Calibration Vertical Servo */
+  pinMode(servo2_pin, OUTPUT);
+  ledcSetup(3, 50, 10);
+  ledcAttachPin(servo2_pin, 3);
+  int servo2_min_duty = map(servo2_neutral, 0, 20000, 0, 1023);
+  ledcWrite(3, servo2_min_duty);
+
   /* Wifi access point Setup */
   Serial.println();
   Serial.print("Configuring access point...");
@@ -131,11 +232,11 @@ void setup() {
   Serial.print("AP IP address: ");
   Serial.println(myIP);
 
-  /* Timer (50ms)*/
+  /* Timer (100ms)*/
   Serial.println("begin timer");
   auto timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTimer, true);
-  timerAlarmWrite(timer, 50000, true);
+  timerAlarmWrite(timer, 100000, true);
   timerAlarmEnable(timer);
 
   /* UDP */
@@ -155,8 +256,17 @@ void setup() {
   }
 
   /* WebServer */
-  server.serveStatic("/", SPIFFS, "/scheduler.html");
+  server.serveStatic("/", SPIFFS, "/index.html");
+  server.serveStatic("/styles.css", SPIFFS, "/styles.css");
+  server.serveStatic("/joystick.html", SPIFFS, "/joystick.html");
+  server.serveStatic("/joystick.js", SPIFFS, "/joystick.js");
+  server.serveStatic("/scheduler.html", SPIFFS, "/scheduler.html");
+  server.serveStatic("/scheduler.js", SPIFFS, "/scheduler.js");
+  server.serveStatic("/watchdog.js", SPIFFS, "/watchdog.js");
+
   server.on("/get-schedule", HTTP_PUT, handleGetSchedule);
+  server.on("/get-joystick", HTTP_PUT, handleGetJoystick);
+  server.on("/watchdog", HTTP_PUT, handleWatchdog);
   server.begin();
   Serial.println("start server");
 }

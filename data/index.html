@@ -1,37 +1,37 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Power Control System</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Power Control System</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <main>
-        <section id="scheduler">
-            <svg id="waveform" width="320" height="200"></svg>
-            <div>
-                <button id="clearPoints">全ポイント削除</button>
-                <button id="sendToESP32">Start</button>
-            </div>
-            <!--div id="debug-info">
-                <h3>デバッグ情報:</h3>
-                <pre id="debug-output"></pre>
-            </div-->
-        </section>
+  <main>
+    <section id="scheduler">
+      <svg id="waveform" width="320" height="200"></svg>
+      <div>
+        <button id="clearPoints">全ポイント削除</button>
+        <button id="sendToESP32">Start</button>
+      </div>
+      <!--div id="debug-info">
+        <h3>デバッグ情報:</h3>
+        <pre id="debug-output"></pre>
+      </div-->
+    </section>
 
-        <section id="joystick">
-            <div id="joystickWrapper">
-                <div id="joystick-zone"></div>
-            </div>
-            <div id="joystickInfo"></div>
-        </section>
-    </main>
+    <section id="joystick">
+      <div id="joystickWrapper">
+        <div id="joystick-zone"></div>
+      </div>
+      <div id="joystickInfo"></div>
+    </section>
+  </main>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.0/nipplejs.min.js"></script>
-    <script src="scheduler.js"></script>
-    <script src="joystick.js"></script>
-    <script src="watchdog.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.0/nipplejs.min.js"></script>
+  <script src="scheduler.js"></script>
+  <script src="joystick.js"></script>
+  <script src="watchdog.js"></script>
 </body>
 </html>

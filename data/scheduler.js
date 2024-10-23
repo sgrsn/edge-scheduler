@@ -5,7 +5,7 @@ const margin = { top: 20, right: 20, bottom: 30, left: 40 };
 const graphWidth = width - margin.left - margin.right;
 const graphHeight = height - margin.top - margin.bottom;
 
-const x_lim = 20;
+const x_lim = 30;
 const y_lim = 100;
 
 const x = d3.scaleLinear().domain([0, x_lim]).range([0, graphWidth]);
@@ -67,6 +67,24 @@ function updateWaveform() {
     .on("touchend", touchEnded);
 }
 
+function showCoordinates(value_x, value_y, pos_x, pos_y) {
+  // 既存の座標表示を削除
+  graph.selectAll(".coordinate-text").remove();
+  
+  // 座標を小数点2桁まで丸める
+  const roundedX = Math.round(value_x);
+  const roundedY = Math.round(value_y);
+  
+  // 座標テキストを追加
+  graph.append("text")
+    .attr("class", "coordinate-text")
+    .attr("x", pos_x)  // 点から少し右にオフセット
+    .attr("y", pos_y)  // 点から少し上にオフセット
+    .attr("fill", "black")
+    .attr("font-size", "12px")
+    .text(`(${roundedX}, ${roundedY})`);
+}
+
 function touchStarted(event, d) {
   event.preventDefault();
   selectedPoint = d;
@@ -84,6 +102,10 @@ function touchMoved(event) {
 
   selectedPoint.x = Math.max(0, Math.min(x_lim, x.invert(touchX)));
   selectedPoint.y = Math.max(0, Math.min(y_lim, y.invert(touchY)));
+
+  // グラフ右上(固定)に座標を表示
+  showCoordinates(selectedPoint.x, selectedPoint.y, width - 100, 20);
+
   points.sort((a, b) => a.x - b.x);
   updateWaveform();
 }

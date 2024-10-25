@@ -57,6 +57,10 @@ public:
     isRunning_ = true;
     lastTime_ = (double) millis() / 1000.0;
   }
+  void stop()
+  {
+    isRunning_ = false;
+  }
   bool isRunning()
   {
     return isRunning_;
@@ -118,6 +122,13 @@ private:
 Schedule schedule;
 Watchdog watchdog(WATCHDOG_TIMEOUT);
 
+void stopAllActuators()
+{
+  ledcWrite(1, map(esc_minUs, 0, 20000, 0, 1023));
+  ledcWrite(2, map(servo_neutral, 0, 20000, 0, 1023));
+  ledcWrite(3, map(servo2_neutral, 0, 20000, 0, 1023));
+}
+
 void handleGetSchedule() 
 {
   // 受信するデータ
@@ -170,6 +181,13 @@ void handleGetJoystick()
   ledcWrite(3, duty2);
 }
 
+void handoleStop()
+{
+  Serial.println("stop");
+  stopAllActuators();
+  schedule.stop();
+}
+
 // クライアントから一定時間ごとに送信されるリクエストを受け取る
 // watchdogをリセットする
 void handleWatchdog() 
@@ -184,17 +202,18 @@ void handleWatchdog()
 /*Timer*/
 void onTimer() {
   double output = schedule.getOutput();
+
+  // watchdogがタイムアウトしたら全てのアクチュエータを停止
+  if (watchdog.isTimeout()) {
+    stopAllActuators();
+    schedule.stop();
+    return;
+  }
+
   int esc_min_duty = map(esc_minUs, 0, 20000, 0, 1023);
   int esc_max_duty = map(esc_maxUs, 0, 20000, 0, 1023);
   ledcWrite(1, map(constrain(output, 0, 100), 0, 100, esc_min_duty, esc_max_duty));
   //Serial.printf("output: %f\n", output);
-
-  // watchdogがタイムアウトしたらESCを最小にする
-  if (watchdog.isTimeout()) {
-    ledcWrite(1, esc_min_duty);
-    ledcWrite(2, map(servo_neutral, 0, 20000, 0, 1023));
-    ledcWrite(3, map(servo2_neutral, 0, 20000, 0, 1023));
-  }
 }
 
 
@@ -267,6 +286,7 @@ void setup() {
   server.on("/get-schedule", HTTP_PUT, handleGetSchedule);
   server.on("/get-joystick", HTTP_PUT, handleGetJoystick);
   server.on("/watchdog", HTTP_PUT, handleWatchdog);
+  server.on("/stop", HTTP_PUT, handoleStop);
   server.begin();
   Serial.println("start server");
 }

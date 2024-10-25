@@ -5,8 +5,15 @@ const margin = { top: 20, right: 20, bottom: 30, left: 40 };
 const graphWidth = width - margin.left - margin.right;
 const graphHeight = height - margin.top - margin.bottom;
 
-const x_lim = 30;
+let x_lim = 20;
 const y_lim = 100;
+
+// 範囲拡張のための設定
+const EXTENSION_THRESHOLD = 1.05; // x軸の105%を超えたら拡張を検討
+const EXTENSION_DELAY = 500; // ミリ秒単位での判定遅延
+const EXTENSION_AMOUNT = 10; // 一度に増やす量
+let extensionTimer = null;
+let lastExtensionCheck = 0;
 
 const x = d3.scaleLinear().domain([0, x_lim]).range([0, graphWidth]);
 const y = d3.scaleLinear().domain([0, y_lim]).range([graphHeight, 0]);
@@ -14,12 +21,59 @@ const y = d3.scaleLinear().domain([0, y_lim]).range([graphHeight, 0]);
 const graph = svg.append("g")
   .attr("transform", `translate(${margin.left},${margin.top})`);
 
-graph.append("g")
-  .attr("transform", `translate(0,${graphHeight})`)
-  .call(d3.axisBottom(x));
+// x軸とy軸の初期設定
+function setupAxes() {
+  graph.selectAll("g").remove(); // 既存の軸を削除
+  
+  graph.append("g")
+    .attr("class", "x-axis")
+    .attr("transform", `translate(0,${graphHeight})`)
+    .call(d3.axisBottom(x));
 
-graph.append("g")
-  .call(d3.axisLeft(y));
+  graph.append("g")
+    .attr("class", "y-axis")
+    .call(d3.axisLeft(y));
+}
+
+setupAxes();
+
+function extendXAxis() {
+  const newXLim = x_lim + EXTENSION_AMOUNT;
+  x_lim = newXLim;
+  x.domain([0, x_lim]);
+  
+  // 軸の更新
+  graph.select(".x-axis")
+    .transition()
+    .duration(300)
+    .call(d3.axisBottom(x));
+    
+  // 波形の再描画
+  updateWaveform();
+}
+
+function checkForExtension(currentX) {
+  const currentTime = Date.now();
+  
+  // 範囲を超えているかチェック
+  if (currentX > x_lim * EXTENSION_THRESHOLD) {
+    if (!extensionTimer) {
+      // タイマーをセット
+      extensionTimer = setTimeout(() => {
+        extendXAxis();
+        extensionTimer = null;
+      }, EXTENSION_DELAY);
+    }
+  } else {
+    // 範囲内に戻った場合はタイマーをクリア
+    if (extensionTimer) {
+      clearTimeout(extensionTimer);
+      extensionTimer = null;
+    }
+  }
+  
+  lastExtensionCheck = currentTime;
+}
 
 let points = [];
 let isDragging = false;
@@ -68,18 +122,15 @@ function updateWaveform() {
 }
 
 function showCoordinates(value_x, value_y, pos_x, pos_y) {
-  // 既存の座標表示を削除
   graph.selectAll(".coordinate-text").remove();
   
-  // 座標を小数点2桁まで丸める
   const roundedX = Math.round(value_x);
   const roundedY = Math.round(value_y);
   
-  // 座標テキストを追加
   graph.append("text")
     .attr("class", "coordinate-text")
-    .attr("x", pos_x)  // 点から少し右にオフセット
-    .attr("y", pos_y)  // 点から少し上にオフセット
+    .attr("x", pos_x)
+    .attr("y", pos_y)
     .attr("fill", "black")
     .attr("font-size", "12px")
     .text(`(${roundedX}, ${roundedY})`);
@@ -100,10 +151,12 @@ function touchMoved(event) {
   const touchX = touch.clientX - svgRect.left - margin.left;
   const touchY = touch.clientY - svgRect.top - margin.top;
 
-  selectedPoint.x = Math.max(0, Math.min(x_lim, x.invert(touchX)));
+  const newX = x.invert(touchX);
+  checkForExtension(newX);
+
+  selectedPoint.x = Math.max(0, Math.min(x_lim, newX));
   selectedPoint.y = Math.max(0, Math.min(y_lim, y.invert(touchY)));
 
-  // グラフ右上(固定)に座標を表示
   showCoordinates(selectedPoint.x, selectedPoint.y, width - 100, 20);
 
   points.sort((a, b) => a.x - b.x);
@@ -114,6 +167,12 @@ function touchEnded(event) {
   event.preventDefault();
   isDragging = false;
   selectedPoint = null;
+  
+  // タイマーをクリア
+  if (extensionTimer) {
+    clearTimeout(extensionTimer);
+    extensionTimer = null;
+  }
 }
 
 svg.on("click", function(event) {
@@ -121,9 +180,12 @@ svg.on("click", function(event) {
   const svgRect = svg.node().getBoundingClientRect();
   const mouseX = event.clientX - svgRect.left - margin.left;
   const mouseY = event.clientY - svgRect.top - margin.top;
+  
+  const newX = x.invert(mouseX);
+  
   const newPoint = {
     id: Date.now(),
-    x: x.invert(mouseX),
+    x: Math.min(x_lim, newX),
     y: y.invert(mouseY)
   };
   points.push(newPoint);
@@ -181,7 +243,6 @@ function stopAnimation() {
   graph.select("#current-position").remove();
 }
 
-// イベントリスナーの設定
 document.getElementById("clearPoints").addEventListener("click", function() {
   points = [];
   updateWaveform();
@@ -191,13 +252,14 @@ document.getElementById("sendToESP32").addEventListener("click", function() {
   const xhr = new XMLHttpRequest();
   xhr.open('PUT', `./get-schedule?points=${JSON.stringify(points)}`);
   xhr.send();
-
-  // デバッグ情報の表示
-  // const debugOutput = document.getElementById('debug-output');
-  // debugOutput.textContent = `送信データ: ${JSON.stringify(points)}`;
-
   startAnimation();
 });
 
-// 初期化
+document.getElementById("stop").addEventListener("click", function() {
+  const xhr = new XMLHttpRequest();
+  xhr.open('PUT', `./stop`);
+  xhr.send();
+  stopAnimation();
+});
+
 updateWaveform();
